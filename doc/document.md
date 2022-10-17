@@ -64,13 +64,13 @@ Best wishes to all of you.
 To install the package on your system, run
 
 ```shell
-go get github.com/jung-kurt/gofpdf
+go get github.com/desertbit/gofpdf
 ```
 
 Later, to receive updates, run
 
 ```shell
-go get -u -v github.com/jung-kurt/gofpdf/...
+go get -u -v github.com/desertbit/gofpdf/...
 ```
 
 ## Quick Start
