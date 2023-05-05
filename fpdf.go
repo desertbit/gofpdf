@@ -654,7 +654,7 @@ func (f *Fpdf) open() {
 }
 
 // Close terminates the PDF document. It is not necessary to call this method
-// explicitly because Output(), OutputAndClose() and OutputFileAndClose() do it
+// explicitly because Output(), OutputAndClose(), OutputFileAndClose() and OutputReader() do it
 // automatically. If the document contains no page, AddPage() is called to
 // prevent the generation of an invalid document.
 func (f *Fpdf) Close() {
@@ -2925,7 +2925,7 @@ func (f *Fpdf) WriteLinkID(h float64, displayStr string, linkID int) {
 //
 // width indicates the width of the box the text will be drawn in. This is in
 // the unit of measure specified in New(). If it is set to 0, the bounding box
-//of the page will be taken (pageWidth - leftMargin - rightMargin).
+// of the page will be taken (pageWidth - leftMargin - rightMargin).
 //
 // lineHeight indicates the line height in the unit of measure specified in
 // New().
@@ -3473,6 +3473,16 @@ func (f *Fpdf) Output(w io.Writer) error {
 		f.err = err
 	}
 	return f.err
+}
+
+func (f *Fpdf) OutputReader() (io.Reader, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.state < 3 {
+		f.Close()
+	}
+	return &f.buffer, nil
 }
 
 func (f *Fpdf) getpagesizestr(sizeStr string) (size SizeType) {
