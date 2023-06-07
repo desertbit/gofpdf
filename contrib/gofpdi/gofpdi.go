@@ -11,7 +11,7 @@ package gofpdi
 import (
 	"io"
 
-	realgofpdi "github.com/phpdave11/gofpdi"
+	realgofpdi "github.com/desertbit/gofpdi"
 )
 
 // gofpdiPdf is a partial interface that only implements the functions we need
@@ -46,6 +46,11 @@ func NewImporterFromStream(rs *io.ReadSeeker) (i *Importer) {
 // SetSourceFromFile sets the importer's source with the given path.
 func (i *Importer) SetSourceFromFile(path string) {
 	i.fpdi.SetSourceFile(path)
+}
+
+// NumPages gets the number of pages.
+func (i *Importer) NumPages() int {
+	return i.fpdi.GetReader().NumPages()
 }
 
 // ImportPage imports a page of a PDF file with the specified box (/MediaBox,
