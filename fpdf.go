@@ -2493,7 +2493,6 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 	str := s.String()
 	if len(str) > 0 {
 		f.out(str)
-		fmt.Printf("CellFormat: %d\n", s.Len())
 	}
 	f.lasth = h
 	if ln > 0 {
