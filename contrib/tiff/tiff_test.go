@@ -8,7 +8,7 @@ import (
 
 // ExampleRegisterFile demonstrates the loading and display of a TIFF image.
 func ExampleRegisterFile() {
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf, _ := gofpdf.New("L", "mm", "A4", "")
 	pdf.SetFont("Helvetica", "", 12)
 	pdf.SetFillColor(200, 200, 220)
 	pdf.AddPageFormat("L", gofpdf.SizeType{Wd: 200, Ht: 200})

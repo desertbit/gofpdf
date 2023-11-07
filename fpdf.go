@@ -49,15 +49,7 @@ var gl struct {
 	modDate      time.Time
 }
 
-type fmtBuffer struct {
-	bytes.Buffer
-}
-
-func (b *fmtBuffer) printf(fmtStr string, args ...interface{}) {
-	b.Buffer.WriteString(fmt.Sprintf(fmtStr, args...))
-}
-
-func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType) (f *Fpdf) {
+func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, bufferDir, outputFilePath string, size SizeType) (f *Fpdf, err error) {
 	f = new(Fpdf)
 	if orientationStr == "" {
 		orientationStr = "p"
@@ -73,10 +65,20 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 	if fontDirStr == "" {
 		fontDirStr = "."
 	}
+	f.bufferDir = bufferDir
+	f.outputFilePath = outputFilePath
 	f.page = 0
 	f.n = 2
-	f.pages = make([]*bytes.Buffer, 0, 8)
-	f.pages = append(f.pages, bytes.NewBufferString("")) // pages[0] is unused (1-based)
+	if outputFilePath != "" {
+		f.buffer, err = newFileBuffer(outputFilePath)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		f.buffer = newMemBuffer()
+	}
+	f.pages = make([]buffer, 0, 8)
+	f.pages = append(f.pages, newMemBuffer()) // pages[0] is unused (1-based)
 	f.pageSizes = make(map[int]SizeType)
 	f.pageBoxes = make(map[int]map[string]PageBox)
 	f.defPageBoxes = make(map[string]PageBox)
@@ -215,8 +217,8 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr string, size SizeType)
 // subsequently called to produce a single PDF document. NewCustom() is an
 // alternative to New() that provides additional customization. The PageSize()
 // example demonstrates this method.
-func NewCustom(init *InitType) (f *Fpdf) {
-	return fpdfNew(init.OrientationStr, init.UnitStr, init.SizeStr, init.FontDirStr, init.Size)
+func NewCustom(init *InitType) (f *Fpdf, err error) {
+	return fpdfNew(init.OrientationStr, init.UnitStr, init.SizeStr, init.FontDirStr, "", "", init.Size)
 }
 
 // New returns a pointer to a new Fpdf instance. Its methods are subsequently
@@ -239,8 +241,20 @@ func NewCustom(init *InitType) (f *Fpdf) {
 // reference an actual directory if a font other than one of the core
 // fonts is used. The core fonts are "courier", "helvetica" (also called
 // "arial"), "times", and "zapfdingbats" (also called "symbol").
-func New(orientationStr, unitStr, sizeStr, fontDirStr string) (f *Fpdf) {
-	return fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, SizeType{0, 0})
+func New(orientationStr, unitStr, sizeStr, fontDirStr string) (f *Fpdf, err error) {
+	return fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, "", "", SizeType{0, 0})
+}
+
+// Same as New, but uses a directory to create temporary file buffers per page and
+// writes the final contents directly to a file at outputFilePath.
+// The output file is created or truncated.
+//
+// It is the callers responsibility to clear up any buffer files, if the document
+// generation fails.
+//
+// This trades speed for system memory.
+func NewWithFileBuffer(orientationStr, unitStr, sizeStr, fontDirStr, bufferDir, outputFilePath string) (f *Fpdf, err error) {
+	return fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, bufferDir, outputFilePath, SizeType{0, 0})
 }
 
 // Ok returns true if no processing errors have occurred.
@@ -654,7 +668,7 @@ func (f *Fpdf) open() {
 }
 
 // Close terminates the PDF document. It is not necessary to call this method
-// explicitly because Output(), OutputAndClose(), OutputFileAndClose() and OutputReader() do it
+// explicitly because Output(), OutputAndClose() and OutputFileAndClose() do it
 // automatically. If the document contains no page, AddPage() is called to
 // prevent the generation of an invalid document.
 func (f *Fpdf) Close() {
@@ -746,7 +760,6 @@ func (f *Fpdf) AddPageFormat(orientationStr string, size SizeType) {
 		// Page footer avoid double call on footer.
 		if f.footerFnc != nil {
 			f.footerFnc()
-
 		} else if f.footerFncLpi != nil {
 			f.footerFncLpi(false) // not last page.
 		}
@@ -841,7 +854,6 @@ func (f *Fpdf) AddPage() {
 	}
 	// dbg("AddPage")
 	f.AddPageFormat(f.defOrientation, f.defPageSize)
-	return
 }
 
 // PageNo returns the current page number.
@@ -1062,7 +1074,6 @@ func (f *Fpdf) SetDashPattern(dashArray []float64, dashPhase float64) {
 	if f.page > 0 {
 		f.outputDashPattern()
 	}
-
 }
 
 func (f *Fpdf) outputDashPattern() {
@@ -1220,7 +1231,6 @@ func (f *Fpdf) Polygon(points []PointType, styleStr string) {
 // the current draw color and line width centered on the ellipse's perimeter.
 // Filling uses the current fill color.
 func (f *Fpdf) Beziergon(points []PointType, styleStr string) {
-
 	// Thanks, Robert Lillack, for contributing this function.
 
 	if len(points) < 4 {
@@ -1390,8 +1400,10 @@ func (f *Fpdf) gradient(tp, r1, g1, b1, r2, g2, b2 int, x1, y1, x2, y2, r float6
 	pos := len(f.gradientList)
 	clr1 := rgbColorValue(r1, g1, b1, "", "")
 	clr2 := rgbColorValue(r2, g2, b2, "", "")
-	f.gradientList = append(f.gradientList, gradientType{tp, clr1.str, clr2.str,
-		x1, y1, x2, y2, r, 0})
+	f.gradientList = append(f.gradientList, gradientType{
+		tp, clr1.str, clr2.str,
+		x1, y1, x2, y2, r, 0,
+	})
 	f.outf("/Sh%d sh", pos)
 }
 
@@ -1592,14 +1604,14 @@ func (f *Fpdf) ClipCircle(x, y, r float64, outline bool) {
 // The ClipText() example demonstrates this method.
 func (f *Fpdf) ClipPolygon(points []PointType, outline bool) {
 	f.clipNest++
-	var s fmtBuffer
+	s := newMemBuffer()
 	h := f.h
 	k := f.k
-	s.printf("q ")
+	s.Printf("q ")
 	for j, pt := range points {
-		s.printf("%.5f %.5f %s ", pt.X*k, (h-pt.Y)*k, strIf(j == 0, "m", "l"))
+		s.Printf("%.5f %.5f %s ", pt.X*k, (h-pt.Y)*k, strIf(j == 0, "m", "l"))
 	}
-	s.printf("h W %s", strIf(outline, "S", "n"))
+	s.Printf("h W %s", strIf(outline, "S", "n"))
 	f.out(s.String())
 }
 
@@ -1876,7 +1888,6 @@ func (f *Fpdf) addFontFromBytes(familyStr, styleStr string, jsonFileBytes, zFile
 		// load font definitions
 		var info fontDefType
 		err := json.Unmarshal(jsonFileBytes, &info)
-
 		if err != nil {
 			f.err = err
 		}
@@ -2310,7 +2321,8 @@ func (f *Fpdf) SetAcceptPageBreakFunc(fnc func() bool) {
 // linkStr is a target URL or empty for no external link. A non--zero value for
 // link takes precedence over linkStr.
 func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
-	alignStr string, fill bool, link int, linkStr string) {
+	alignStr string, fill bool, link int, linkStr string,
+) {
 	// dbg("CellFormat. h = %.2f, borderStr = %s", h, borderStr)
 	if f.err != nil {
 		return
@@ -2345,7 +2357,7 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 	if w == 0 {
 		w = f.w - f.rMargin - f.x
 	}
-	var s fmtBuffer
+	s := newMemBuffer()
 	if fill || borderStr == "1" {
 		var op string
 		if fill {
@@ -2361,7 +2373,7 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 			op = "S"
 		}
 		/// dbg("(CellFormat) f.x %.2f f.k %.2f", f.x, f.k)
-		s.printf("%.2f %.2f %.2f %.2f re %s ", f.x*k, (f.h-f.y)*k, w*k, -h*k, op)
+		s.Printf("%.2f %.2f %.2f %.2f re %s ", f.x*k, (f.h-f.y)*k, w*k, -h*k, op)
 	}
 	if len(borderStr) > 0 && borderStr != "1" {
 		// fmt.Printf("border is '%s', no fill\n", borderStr)
@@ -2372,16 +2384,16 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 		right := (x + w) * k
 		bottom := (f.h - (y + h)) * k
 		if strings.Contains(borderStr, "L") {
-			s.printf("%.2f %.2f m %.2f %.2f l S ", left, top, left, bottom)
+			s.Printf("%.2f %.2f m %.2f %.2f l S ", left, top, left, bottom)
 		}
 		if strings.Contains(borderStr, "T") {
-			s.printf("%.2f %.2f m %.2f %.2f l S ", left, top, right, top)
+			s.Printf("%.2f %.2f m %.2f %.2f l S ", left, top, right, top)
 		}
 		if strings.Contains(borderStr, "R") {
-			s.printf("%.2f %.2f m %.2f %.2f l S ", right, top, right, bottom)
+			s.Printf("%.2f %.2f m %.2f %.2f l S ", right, top, right, bottom)
 		}
 		if strings.Contains(borderStr, "B") {
-			s.printf("%.2f %.2f m %.2f %.2f l S ", left, bottom, right, bottom)
+			s.Printf("%.2f %.2f m %.2f %.2f l S ", left, bottom, right, bottom)
 		}
 	}
 	if len(txtStr) > 0 {
@@ -2416,9 +2428,9 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 			dy = 0
 		}
 		if f.colorFlag {
-			s.printf("q %s ", f.color.text.str)
+			s.Printf("q %s ", f.color.text.str)
 		}
-		//If multibyte, Tw has no effect - do word spacing using an adjustment before each space
+		// If multibyte, Tw has no effect - do word spacing using an adjustment before each space
 		if (f.ws != 0 || alignStr == "J") && f.isCurrentUTF8 { // && f.ws != 0
 			if f.isRTL {
 				txtStr = reverseText(txtStr)
@@ -2429,19 +2441,19 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 			}
 			space := f.escape(utf8toutf16(" ", false))
 			strSize := f.GetStringSymbolWidth(txtStr)
-			s.printf("BT 0 Tw %.2f %.2f Td [", (f.x+dx)*k, (f.h-(f.y+.5*h+.3*f.fontSize))*k)
+			s.Printf("BT 0 Tw %.2f %.2f Td [", (f.x+dx)*k, (f.h-(f.y+.5*h+.3*f.fontSize))*k)
 			t := strings.Split(txtStr, " ")
 			shift := float64((wmax - strSize)) / float64(len(t)-1)
 			numt := len(t)
 			for i := 0; i < numt; i++ {
 				tx := t[i]
 				tx = "(" + f.escape(utf8toutf16(tx, false)) + ")"
-				s.printf("%s ", tx)
+				s.Printf("%s ", tx)
 				if (i + 1) < numt {
-					s.printf("%.3f(%s) ", -shift, space)
+					s.Printf("%.3f(%s) ", -shift, space)
 				}
 			}
-			s.printf("] TJ ET")
+			s.Printf("] TJ ET")
 		} else {
 			var txt2 string
 			if f.isCurrentUTF8 {
@@ -2460,18 +2472,18 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 			}
 			bt := (f.x + dx) * k
 			td := (f.h - (f.y + dy + .5*h + .3*f.fontSize)) * k
-			s.printf("BT %.2f %.2f Td (%s)Tj ET", bt, td, txt2)
-			//BT %.2F %.2F Td (%s) Tj ET',(f.x+dx)*k,(f.h-(f.y+.5*h+.3*f.FontSize))*k,txt2);
+			s.Printf("BT %.2f %.2f Td (%s)Tj ET", bt, td, txt2)
+			// BT %.2F %.2F Td (%s) Tj ET',(f.x+dx)*k,(f.h-(f.y+.5*h+.3*f.FontSize))*k,txt2);
 		}
 
 		if f.underline {
-			s.printf(" %s", f.dounderline(f.x+dx, f.y+dy+.5*h+.3*f.fontSize, txtStr))
+			s.Printf(" %s", f.dounderline(f.x+dx, f.y+dy+.5*h+.3*f.fontSize, txtStr))
 		}
 		if f.strikeout {
-			s.printf(" %s", f.dostrikeout(f.x+dx, f.y+dy+.5*h+.3*f.fontSize, txtStr))
+			s.Printf(" %s", f.dostrikeout(f.x+dx, f.y+dy+.5*h+.3*f.fontSize, txtStr))
 		}
 		if f.colorFlag {
-			s.printf(" Q")
+			s.Printf(" Q")
 		}
 		if link > 0 || len(linkStr) > 0 {
 			f.newLink(f.x+dx, f.y+dy+.5*h-.5*f.fontSize, f.GetStringWidth(txtStr), f.fontSize, link, linkStr)
@@ -2713,9 +2725,9 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 			f.err = fmt.Errorf("character outside the supported range: %s", string(c))
 			return
 		}
-		if cw[int(c)] == 0 { //Marker width 0 used for missing symbols
+		if cw[int(c)] == 0 { // Marker width 0 used for missing symbols
 			l += f.currentFont.Desc.MissingWidth
-		} else if cw[int(c)] != 65535 { //Marker width 65535 used for zero width symbols
+		} else if cw[int(c)] != 65535 { // Marker width 65535 used for zero width symbols
 			l += cw[int(c)]
 		}
 		if l > wmax {
@@ -3475,16 +3487,6 @@ func (f *Fpdf) Output(w io.Writer) error {
 	return f.err
 }
 
-func (f *Fpdf) OutputReader() (io.Reader, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	if f.state < 3 {
-		f.Close()
-	}
-	return &f.buffer, nil
-}
-
 func (f *Fpdf) getpagesizestr(sizeStr string) (size SizeType) {
 	if f.err != nil {
 		return
@@ -3526,7 +3528,16 @@ func (f *Fpdf) beginpage(orientationStr string, size SizeType) {
 	for box, pb := range f.defPageBoxes {
 		f.pageBoxes[f.page][box] = pb
 	}
-	f.pages = append(f.pages, bytes.NewBufferString(""))
+	var pageBuf buffer
+	if f.bufferDir != "" {
+		pageBuf, f.err = newTempFileBuffer(f.bufferDir)
+		if f.err != nil {
+			return
+		}
+	} else {
+		pageBuf = newMemBuffer()
+	}
+	f.pages = append(f.pages, pageBuf)
 	f.pageLinks = append(f.pageLinks, make([]linkType, 0, 0))
 	f.pageAttachments = append(f.pageAttachments, []annotationAttach{})
 	f.state = 2
@@ -3650,27 +3661,36 @@ func be16(buf []byte) int {
 	return 256*int(buf[0]) + int(buf[1])
 }
 
-func (f *Fpdf) newImageInfo() *ImageInfoType {
+func (f *Fpdf) newImageInfo() (*ImageInfoType, error) {
+	var b buffer
+	if f.bufferDir != "" {
+		var err error
+		b, err = newTempFileBuffer(f.bufferDir)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		b = newMemBuffer()
+	}
+
 	// default dpi to 72 unless told otherwise
-	return &ImageInfoType{scale: f.k, dpi: 72}
+	return &ImageInfoType{data: b, scale: f.k, dpi: 72, bufferDir: f.bufferDir}, nil
 }
 
 // parsejpg extracts info from io.Reader with JPEG data
 // Thank you, Bruno Michel, for providing this code.
 func (f *Fpdf) parsejpg(r io.Reader) (info *ImageInfoType) {
-	info = f.newImageInfo()
-	var (
-		data bytes.Buffer
-		err  error
-	)
-	_, err = data.ReadFrom(r)
-	if err != nil {
-		f.err = err
+	info, f.err = f.newImageInfo()
+	if f.err != nil {
 		return
 	}
-	info.data = data.Bytes()
 
-	config, err := jpeg.DecodeConfig(bytes.NewReader(info.data))
+	_, f.err = info.data.ReadFrom(r)
+	if f.err != nil {
+		return
+	}
+
+	config, err := jpeg.DecodeConfig(info.data)
 	if err != nil {
 		f.err = err
 		return
@@ -3918,13 +3938,13 @@ func (f *Fpdf) putpages() {
 		f.out("/Resources 2 0 R")
 		// Links
 		if len(f.pageLinks[n])+len(f.pageAttachments[n]) > 0 {
-			var annots fmtBuffer
-			annots.printf("/Annots [")
+			annots := newMemBuffer()
+			annots.Printf("/Annots [")
 			for _, pl := range f.pageLinks[n] {
-				annots.printf("<</Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] ",
+				annots.Printf("<</Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] ",
 					pl.x, pl.y, pl.x+pl.wd, pl.y-pl.ht)
 				if pl.link == 0 {
-					annots.printf("/A <</S /URI /URI %s>>>>", f.textstring(pl.linkStr))
+					annots.Printf("/A <</S /URI /URI %s>>>>", f.textstring(pl.linkStr))
 				} else {
 					l := f.links[pl.link]
 					var sz SizeType
@@ -3936,11 +3956,11 @@ func (f *Fpdf) putpages() {
 						h = hPt
 					}
 					// dbg("h [%.2f], l.y [%.2f] f.k [%.2f]\n", h, l.y, f.k)
-					annots.printf("/Dest [%d 0 R /XYZ 0 %.2f null]>>", 1+2*l.page, h-l.y*f.k)
+					annots.Printf("/Dest [%d 0 R /XYZ 0 %.2f null]>>", 1+2*l.page, h-l.y*f.k)
 				}
 			}
-			f.putAttachmentAnnotationLinks(&annots, n)
-			annots.printf("]")
+			f.putAttachmentAnnotationLinks(annots, n)
+			annots.Printf("]")
 			f.out(annots.String())
 		}
 		if f.pdfVersion > "1.3" {
@@ -3964,12 +3984,12 @@ func (f *Fpdf) putpages() {
 	f.offsets[1] = f.buffer.Len()
 	f.out("1 0 obj")
 	f.out("<</Type /Pages")
-	var kids fmtBuffer
-	kids.printf("/Kids [")
+	kids := newMemBuffer()
+	kids.Printf("/Kids [")
 	for i := 1; i <= nb; i++ {
-		kids.printf("%d 0 R ", pagesObjectNumbers[i])
+		kids.Printf("%d 0 R ", pagesObjectNumbers[i])
 	}
-	kids.printf("]")
+	kids.Printf("]")
 	f.out(kids.String())
 	f.outf("/Count %d", nb)
 	f.outf("/MediaBox [0 0 %.2f %.2f]", wPt, hPt)
@@ -4086,10 +4106,10 @@ func (f *Fpdf) putfonts() {
 				f.out("endobj")
 				// Widths
 				f.newobj()
-				var s fmtBuffer
+				s := newMemBuffer()
 				s.WriteString("[")
 				for j := 32; j < 256; j++ {
-					s.printf("%d ", font.Cw[j])
+					s.Printf("%d ", font.Cw[j])
 				}
 				s.WriteString("]")
 				f.out(s.String())
@@ -4097,21 +4117,21 @@ func (f *Fpdf) putfonts() {
 				// Descriptor
 				f.newobj()
 				s.Truncate(0)
-				s.printf("<</Type /FontDescriptor /FontName /%s ", name)
-				s.printf("/Ascent %d ", font.Desc.Ascent)
-				s.printf("/Descent %d ", font.Desc.Descent)
-				s.printf("/CapHeight %d ", font.Desc.CapHeight)
-				s.printf("/Flags %d ", font.Desc.Flags)
-				s.printf("/FontBBox [%d %d %d %d] ", font.Desc.FontBBox.Xmin, font.Desc.FontBBox.Ymin,
+				s.Printf("<</Type /FontDescriptor /FontName /%s ", name)
+				s.Printf("/Ascent %d ", font.Desc.Ascent)
+				s.Printf("/Descent %d ", font.Desc.Descent)
+				s.Printf("/CapHeight %d ", font.Desc.CapHeight)
+				s.Printf("/Flags %d ", font.Desc.Flags)
+				s.Printf("/FontBBox [%d %d %d %d] ", font.Desc.FontBBox.Xmin, font.Desc.FontBBox.Ymin,
 					font.Desc.FontBBox.Xmax, font.Desc.FontBBox.Ymax)
-				s.printf("/ItalicAngle %d ", font.Desc.ItalicAngle)
-				s.printf("/StemV %d ", font.Desc.StemV)
-				s.printf("/MissingWidth %d ", font.Desc.MissingWidth)
+				s.Printf("/ItalicAngle %d ", font.Desc.ItalicAngle)
+				s.Printf("/StemV %d ", font.Desc.StemV)
+				s.Printf("/MissingWidth %d ", font.Desc.MissingWidth)
 				var suffix string
 				if tp != "Type1" {
 					suffix = "2"
 				}
-				s.printf("/FontFile%s %d 0 R>>", suffix, f.fontFiles[font.File].n)
+				s.Printf("/FontFile%s %d 0 R>>", suffix, f.fontFiles[font.File].n)
 				f.out(s.String())
 				f.out("endobj")
 			case "UTF8":
@@ -4149,21 +4169,21 @@ func (f *Fpdf) putfonts() {
 
 				// Font descriptor
 				f.newobj()
-				var s fmtBuffer
-				s.printf("<</Type /FontDescriptor /FontName /%s\n /Ascent %d", fontName, font.Desc.Ascent)
-				s.printf(" /Descent %d", font.Desc.Descent)
-				s.printf(" /CapHeight %d", font.Desc.CapHeight)
+				s := newMemBuffer()
+				s.Printf("<</Type /FontDescriptor /FontName /%s\n /Ascent %d", fontName, font.Desc.Ascent)
+				s.Printf(" /Descent %d", font.Desc.Descent)
+				s.Printf(" /CapHeight %d", font.Desc.CapHeight)
 				v := font.Desc.Flags
 				v = v | 4
 				v = v &^ 32
-				s.printf(" /Flags %d", v)
-				s.printf("/FontBBox [%d %d %d %d] ", font.Desc.FontBBox.Xmin, font.Desc.FontBBox.Ymin,
+				s.Printf(" /Flags %d", v)
+				s.Printf("/FontBBox [%d %d %d %d] ", font.Desc.FontBBox.Xmin, font.Desc.FontBBox.Ymin,
 					font.Desc.FontBBox.Xmax, font.Desc.FontBBox.Ymax)
-				s.printf(" /ItalicAngle %d", font.Desc.ItalicAngle)
-				s.printf(" /StemV %d", font.Desc.StemV)
-				s.printf(" /MissingWidth %d", font.Desc.MissingWidth)
-				s.printf("/FontFile2 %d 0 R", f.n+2)
-				s.printf(">>")
+				s.Printf(" /ItalicAngle %d", font.Desc.ItalicAngle)
+				s.Printf(" /StemV %d", font.Desc.StemV)
+				s.Printf(" /MissingWidth %d", font.Desc.MissingWidth)
+				s.Printf("/FontFile2 %d 0 R", f.n+2)
+				s.Printf(">>")
 				f.out(s.String())
 				f.out("endobj")
 
@@ -4181,7 +4201,7 @@ func (f *Fpdf) putfonts() {
 				f.putstream(cidToGidMap)
 				f.out("endobj")
 
-				//Font file
+				// Font file
 				f.newobj()
 				f.out("<</Length " + strconv.Itoa(len(compressedFontStream)))
 				f.out("/Filter /FlateDecode")
@@ -4303,26 +4323,26 @@ func (f *Fpdf) generateCIDFontMap(font *fontDefType, LastRune int) {
 			isInterval = false
 		}
 	}
-	var w fmtBuffer
+	w := newMemBuffer()
 	for _, k := range cidArrayKeys {
 		ws := cidArray[k]
 		if len(arrayCountValues(ws.valueSet)) == 1 {
-			w.printf(" %d %d %d", k, k+len(ws.valueSet)-1, ws.get(0))
+			w.Printf(" %d %d %d", k, k+len(ws.valueSet)-1, ws.get(0))
 		} else {
-			w.printf(" %d [ %s ]\n", k, implode(" ", ws.valueSet))
+			w.Printf(" %d [ %s ]\n", k, implode(" ", ws.valueSet))
 		}
 	}
 	f.out("/W [" + w.String() + " ]")
 }
 
 func implode(sep string, arr []int) string {
-	var s fmtBuffer
+	s := newMemBuffer()
 	for i := 0; i < len(arr)-1; i++ {
-		s.printf("%v", arr[i])
-		s.printf(sep)
+		s.Printf("%v", arr[i])
+		s.Printf(sep)
 	}
 	if len(arr) > 0 {
-		s.printf("%v", arr[len(arr)-1])
+		s.Printf("%v", arr[len(arr)-1])
 	}
 	return s.String()
 }
@@ -4407,30 +4427,42 @@ func (f *Fpdf) putimage(info *ImageInfoType) {
 		f.outf("/DecodeParms <<%s>>", info.dp)
 	}
 	if len(info.trns) > 0 {
-		var trns fmtBuffer
+		trns := newMemBuffer()
 		for _, v := range info.trns {
-			trns.printf("%d %d ", v, v)
+			trns.Printf("%d %d ", v, v)
 		}
 		f.outf("/Mask [%s]", trns.String())
 	}
 	if info.smask != nil {
 		f.outf("/SMask %d 0 R", f.n+1)
 	}
-	f.outf("/Length %d>>", len(info.data))
-	f.putstream(info.data)
+	f.outf("/Length %d>>", info.data.Len())
+	f.putstream(info.data.Bytes())
 	f.out("endobj")
 	// 	Soft mask
 	if len(info.smask) > 0 {
-		smask := &ImageInfoType{
-			w:     info.w,
-			h:     info.h,
-			cs:    "DeviceGray",
-			bpc:   8,
-			f:     info.f,
-			dp:    sprintf("/Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns %d", int(info.w)),
-			data:  info.smask,
-			scale: f.k,
+		var b buffer
+		if f.bufferDir != "" {
+			b, f.err = newTempFileBuffer(f.bufferDir)
+			if f.err != nil {
+				return
+			}
+		} else {
+			b = newMemBuffer()
 		}
+
+		smask := &ImageInfoType{
+			w:         info.w,
+			h:         info.h,
+			cs:        "DeviceGray",
+			bpc:       8,
+			f:         info.f,
+			dp:        sprintf("/Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns %d", int(info.w)),
+			data:      b,
+			scale:     f.k,
+			bufferDir: f.bufferDir,
+		}
+		smask.data.ReadFrom(bytes.NewReader(info.smask))
 		f.putimage(smask)
 	}
 	// 	Palette
@@ -4940,7 +4972,8 @@ func (f *Fpdf) ArcTo(x, y, rx, ry, degRotate, degStart, degEnd float64) {
 }
 
 func (f *Fpdf) arc(x, y, rx, ry, degRotate, degStart, degEnd float64,
-	styleStr string, path bool) {
+	styleStr string, path bool,
+) {
 	x *= f.k
 	y = (f.h - y) * f.k
 	rx *= f.k

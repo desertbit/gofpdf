@@ -9,8 +9,8 @@ import (
 
 // Attachment defines a content to be included in the pdf, in one
 // of the following ways :
-// 	- associated with the document as a whole : see SetAttachments()
-//	- accessible via a link localized on a page : see AddAttachmentAnnotation()
+//   - associated with the document as a whole : see SetAttachments()
+//   - accessible via a link localized on a page : see AddAttachmentAnnotation()
 type Attachment struct {
 	Content []byte
 
@@ -34,7 +34,7 @@ func checksum(data []byte) string {
 	return hex.EncodeToString(sl)
 }
 
-// Writes a compressed file like object as ``/EmbeddedFile``. Compressing is
+// Writes a compressed file like object as “/EmbeddedFile“. Compressing is
 // done with deflate. Includes length, compressed length and MD5 checksum.
 func (f *Fpdf) writeCompressedFileObject(content []byte) {
 	lenUncompressed := len(content)
@@ -140,18 +140,18 @@ func (f *Fpdf) putAnnotationsAttachments() {
 	}
 }
 
-func (f *Fpdf) putAttachmentAnnotationLinks(out *fmtBuffer, page int) {
+func (f *Fpdf) putAttachmentAnnotationLinks(out buffer, page int) {
 	for _, an := range f.pageAttachments[page] {
 		x1, y1, x2, y2 := an.x, an.y, an.x+an.w, an.y-an.h
 		as := fmt.Sprintf("<< /Type /XObject /Subtype /Form /BBox [%.2f %.2f %.2f %.2f] /Length 0 >>",
 			x1, y1, x2, y2)
 		as += "\nstream\nendstream"
 
-		out.printf("<< /Type /Annot /Subtype /FileAttachment /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]\n",
+		out.Printf("<< /Type /Annot /Subtype /FileAttachment /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0]\n",
 			x1, y1, x2, y2)
-		out.printf("/Contents %s ", f.textstring(utf8toutf16(an.Description)))
-		out.printf("/T %s ", f.textstring(utf8toutf16(an.Filename)))
-		out.printf("/AP << /N %s>>", as)
-		out.printf("/FS %d 0 R >>\n", an.objectNumber)
+		out.Printf("/Contents %s ", f.textstring(utf8toutf16(an.Description)))
+		out.Printf("/T %s ", f.textstring(utf8toutf16(an.Filename)))
+		out.Printf("/AP << /N %s>>", as)
+		out.Printf("/FS %d 0 R >>\n", an.objectNumber)
 	}
 }

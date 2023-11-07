@@ -39,7 +39,11 @@ func (f *Fpdf) pngColorSpace(ct byte) (colspace string, colorVal int) {
 }
 
 func (f *Fpdf) parsepngstream(buf *bytes.Buffer, readdpi bool) (info *ImageInfoType) {
-	info = f.newImageInfo()
+	info, f.err = f.newImageInfo()
+	if f.err != nil {
+		return
+	}
+
 	// 	Check signature
 	if string(buf.Next(8)) != "\x89PNG\x0d\x0a\x1a\x0a" {
 		f.err = fmt.Errorf("not a PNG buffer")
@@ -208,6 +212,6 @@ func (f *Fpdf) parsepngstream(buf *bytes.Buffer, readdpi bool) (info *ImageInfoT
 			f.pdfVersion = "1.4"
 		}
 	}
-	info.data = data
+	info.data.ReadFrom(bytes.NewReader(data))
 	return
 }

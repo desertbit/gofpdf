@@ -19,6 +19,7 @@ package gofpdf_test
 import (
 	"bytes"
 	"fmt"
+	"testing"
 
 	"github.com/desertbit/gofpdf"
 	"github.com/desertbit/gofpdf/internal/example"
@@ -55,8 +56,11 @@ func hexStr(s string) string {
 	return b.String()
 }
 
-func ExampleFpdf_GetStringWidth() {
-	pdf := gofpdf.New("", "", "", example.FontDir())
+func ExampleFpdf_GetStringWidth(t *testing.T) {
+	pdf, err := gofpdf.New("", "", "", example.FontDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	pdf.SetFont("Helvetica", "", 12)
 	pdf.AddPage()
 	for _, s := range []string{"Hello", "世界", "\xe7a va?"} {

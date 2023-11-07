@@ -318,15 +318,15 @@ func makeFontEncoding(encList encListType, refEncFileStr string) (diffStr string
 	if refList, err = loadMap(refEncFileStr); err != nil {
 		return
 	}
-	var buf fmtBuffer
+	buf := newMemBuffer()
 	last := 0
 	for j := 32; j < 256; j++ {
 		if encList[j].name != refList[j].name {
 			if j != last+1 {
-				buf.printf("%d ", j)
+				buf.Printf("%d ", j)
 			}
 			last = j
-			buf.printf("/%s ", encList[j].name)
+			buf.Printf("/%s ", encList[j].name)
 		}
 	}
 	diffStr = strings.TrimSpace(buf.String())
