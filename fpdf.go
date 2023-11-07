@@ -1612,7 +1612,6 @@ func (f *Fpdf) ClipPolygon(points []PointType, outline bool) {
 		s.Printf("%.5f %.5f %s ", pt.X*k, (h-pt.Y)*k, strIf(j == 0, "m", "l"))
 	}
 	s.Printf("h W %s", strIf(outline, "S", "n"))
-	fmt.Printf("ClipPolygon: %d\n", s.Len())
 	f.out(s.String())
 }
 
@@ -3662,27 +3661,36 @@ func be16(buf []byte) int {
 	return 256*int(buf[0]) + int(buf[1])
 }
 
-func (f *Fpdf) newImageInfo() *ImageInfoType {
+func (f *Fpdf) newImageInfo() (*ImageInfoType, error) {
+	var b buffer
+	if f.bufferDir != "" {
+		var err error
+		b, err = newTempFileBuffer(f.bufferDir)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		b = newMemBuffer()
+	}
+
 	// default dpi to 72 unless told otherwise
-	return &ImageInfoType{scale: f.k, dpi: 72}
+	return &ImageInfoType{data: b, scale: f.k, dpi: 72, bufferDir: f.bufferDir}, nil
 }
 
 // parsejpg extracts info from io.Reader with JPEG data
 // Thank you, Bruno Michel, for providing this code.
 func (f *Fpdf) parsejpg(r io.Reader) (info *ImageInfoType) {
-	info = f.newImageInfo()
-	var (
-		data bytes.Buffer
-		err  error
-	)
-	_, err = data.ReadFrom(r)
-	if err != nil {
-		f.err = err
+	info, f.err = f.newImageInfo()
+	if f.err != nil {
 		return
 	}
-	info.data = data.Bytes()
 
-	config, err := jpeg.DecodeConfig(bytes.NewReader(info.data))
+	_, f.err = info.data.ReadFrom(r)
+	if f.err != nil {
+		return
+	}
+
+	config, err := jpeg.DecodeConfig(info.data)
 	if err != nil {
 		f.err = err
 		return
@@ -3954,7 +3962,6 @@ func (f *Fpdf) putpages() {
 			f.putAttachmentAnnotationLinks(annots, n)
 			annots.Printf("]")
 			f.out(annots.String())
-			fmt.Printf("putpages (annots): %d\n", annots.Len())
 		}
 		if f.pdfVersion > "1.3" {
 			f.out("/Group <</Type /Group /S /Transparency /CS /DeviceRGB>>")
@@ -3984,7 +3991,6 @@ func (f *Fpdf) putpages() {
 	}
 	kids.Printf("]")
 	f.out(kids.String())
-	fmt.Printf("putpages (kids): %d\n", kids.Len())
 	f.outf("/Count %d", nb)
 	f.outf("/MediaBox [0 0 %.2f %.2f]", wPt, hPt)
 	f.out(">>")
@@ -4127,7 +4133,6 @@ func (f *Fpdf) putfonts() {
 				}
 				s.Printf("/FontFile%s %d 0 R>>", suffix, f.fontFiles[font.File].n)
 				f.out(s.String())
-				fmt.Printf("putfonts(truetype): %d\n", s.Len())
 				f.out("endobj")
 			case "UTF8":
 				fontName := "utf8" + font.Name
@@ -4180,7 +4185,6 @@ func (f *Fpdf) putfonts() {
 				s.Printf("/FontFile2 %d 0 R", f.n+2)
 				s.Printf(">>")
 				f.out(s.String())
-				fmt.Printf("putfonts(utf-8): %d\n", s.Len())
 				f.out("endobj")
 
 				// Embed CIDToGIDMap
@@ -4329,7 +4333,6 @@ func (f *Fpdf) generateCIDFontMap(font *fontDefType, LastRune int) {
 		}
 	}
 	f.out("/W [" + w.String() + " ]")
-	fmt.Printf("generateCIDFontMap: %d\n", w.Len())
 }
 
 func implode(sep string, arr []int) string {
@@ -4429,26 +4432,37 @@ func (f *Fpdf) putimage(info *ImageInfoType) {
 			trns.Printf("%d %d ", v, v)
 		}
 		f.outf("/Mask [%s]", trns.String())
-		fmt.Printf("putimage(): %d\n", trns.Len())
 	}
 	if info.smask != nil {
 		f.outf("/SMask %d 0 R", f.n+1)
 	}
-	f.outf("/Length %d>>", len(info.data))
-	f.putstream(info.data)
+	f.outf("/Length %d>>", info.data.Len())
+	f.putstream(info.data.Bytes())
 	f.out("endobj")
 	// 	Soft mask
 	if len(info.smask) > 0 {
-		smask := &ImageInfoType{
-			w:     info.w,
-			h:     info.h,
-			cs:    "DeviceGray",
-			bpc:   8,
-			f:     info.f,
-			dp:    sprintf("/Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns %d", int(info.w)),
-			data:  info.smask,
-			scale: f.k,
+		var b buffer
+		if f.bufferDir != "" {
+			b, f.err = newTempFileBuffer(f.bufferDir)
+			if f.err != nil {
+				return
+			}
+		} else {
+			b = newMemBuffer()
 		}
+
+		smask := &ImageInfoType{
+			w:         info.w,
+			h:         info.h,
+			cs:        "DeviceGray",
+			bpc:       8,
+			f:         info.f,
+			dp:        sprintf("/Predictor 15 /Colors 1 /BitsPerComponent 8 /Columns %d", int(info.w)),
+			data:      b,
+			scale:     f.k,
+			bufferDir: f.bufferDir,
+		}
+		smask.data.ReadFrom(bytes.NewReader(info.smask))
 		f.putimage(smask)
 	}
 	// 	Palette

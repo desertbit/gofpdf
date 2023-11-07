@@ -58,7 +58,7 @@ func (m *memBuffer) Printf(fmtStr string, args ...interface{}) {
 }
 
 type fileBuffer struct {
-	*os.File
+	f *os.File
 }
 
 func newTempFileBuffer(dir string) (fb *fileBuffer, err error) {
@@ -67,7 +67,7 @@ func newTempFileBuffer(dir string) (fb *fileBuffer, err error) {
 		return
 	}
 
-	return &fileBuffer{File: f}, nil
+	return &fileBuffer{f: f}, nil
 }
 
 func newFileBuffer(path string) (fb *fileBuffer, err error) {
@@ -76,7 +76,35 @@ func newFileBuffer(path string) (fb *fileBuffer, err error) {
 		return
 	}
 
-	return &fileBuffer{File: f}, nil
+	return &fileBuffer{f: f}, nil
+}
+
+func (f *fileBuffer) Read(p []byte) (n int, err error) {
+	f.f.Seek(0, io.SeekStart)
+
+	return f.f.Read(p)
+}
+
+func (f *fileBuffer) Write(p []byte) (n int, err error) {
+	f.f.Seek(0, io.SeekEnd)
+
+	return f.f.Write(p)
+}
+
+func (f *fileBuffer) WriteString(s string) (n int, err error) {
+	f.f.Seek(0, io.SeekEnd)
+
+	return f.f.WriteString(s)
+}
+
+func (f *fileBuffer) ReadFrom(r io.Reader) (n int64, err error) {
+	f.f.Seek(0, io.SeekEnd)
+
+	return f.f.ReadFrom(r)
+}
+
+func (f *fileBuffer) Truncate(size int64) error {
+	return f.f.Truncate(size)
 }
 
 func (f *fileBuffer) String() string {
@@ -84,7 +112,9 @@ func (f *fileBuffer) String() string {
 }
 
 func (f *fileBuffer) Bytes() []byte {
-	data, err := io.ReadAll(f.File)
+	f.f.Seek(0, io.SeekStart)
+
+	data, err := io.ReadAll(f.f)
 	if err != nil {
 		panic(err)
 	}
@@ -93,7 +123,7 @@ func (f *fileBuffer) Bytes() []byte {
 }
 
 func (f *fileBuffer) Len() int {
-	info, err := f.File.Stat()
+	info, err := f.f.Stat()
 	if err != nil {
 		panic(err)
 	}
@@ -102,9 +132,11 @@ func (f *fileBuffer) Len() int {
 }
 
 func (f *fileBuffer) Printf(fmtStr string, args ...interface{}) {
-	f.File.WriteString(fmt.Sprintf(fmtStr, args...))
+	f.f.WriteString(fmt.Sprintf(fmtStr, args...))
 }
 
 func (f *fileBuffer) WriteTo(w io.Writer) (n int64, err error) {
-	return io.Copy(w, f.File)
+	f.f.Seek(0, io.SeekEnd)
+
+	return io.Copy(w, f.f)
 }
