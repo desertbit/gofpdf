@@ -1612,6 +1612,7 @@ func (f *Fpdf) ClipPolygon(points []PointType, outline bool) {
 		s.Printf("%.5f %.5f %s ", pt.X*k, (h-pt.Y)*k, strIf(j == 0, "m", "l"))
 	}
 	s.Printf("h W %s", strIf(outline, "S", "n"))
+	fmt.Printf("ClipPolygon: %d\n", s.Len())
 	f.out(s.String())
 }
 
@@ -2492,6 +2493,7 @@ func (f *Fpdf) CellFormat(w, h float64, txtStr, borderStr string, ln int,
 	str := s.String()
 	if len(str) > 0 {
 		f.out(str)
+		fmt.Printf("CellFormat: %d\n", s.Len())
 	}
 	f.lasth = h
 	if ln > 0 {
@@ -3953,6 +3955,7 @@ func (f *Fpdf) putpages() {
 			f.putAttachmentAnnotationLinks(annots, n)
 			annots.Printf("]")
 			f.out(annots.String())
+			fmt.Printf("putpages (annots): %d\n", annots.Len())
 		}
 		if f.pdfVersion > "1.3" {
 			f.out("/Group <</Type /Group /S /Transparency /CS /DeviceRGB>>")
@@ -3982,6 +3985,7 @@ func (f *Fpdf) putpages() {
 	}
 	kids.Printf("]")
 	f.out(kids.String())
+	fmt.Printf("putpages (kids): %d\n", kids.Len())
 	f.outf("/Count %d", nb)
 	f.outf("/MediaBox [0 0 %.2f %.2f]", wPt, hPt)
 	f.out(">>")
@@ -4124,6 +4128,7 @@ func (f *Fpdf) putfonts() {
 				}
 				s.Printf("/FontFile%s %d 0 R>>", suffix, f.fontFiles[font.File].n)
 				f.out(s.String())
+				fmt.Printf("putfonts(truetype): %d\n", s.Len())
 				f.out("endobj")
 			case "UTF8":
 				fontName := "utf8" + font.Name
@@ -4176,6 +4181,7 @@ func (f *Fpdf) putfonts() {
 				s.Printf("/FontFile2 %d 0 R", f.n+2)
 				s.Printf(">>")
 				f.out(s.String())
+				fmt.Printf("putfonts(utf-8): %d\n", s.Len())
 				f.out("endobj")
 
 				// Embed CIDToGIDMap
@@ -4324,6 +4330,7 @@ func (f *Fpdf) generateCIDFontMap(font *fontDefType, LastRune int) {
 		}
 	}
 	f.out("/W [" + w.String() + " ]")
+	fmt.Printf("generateCIDFontMap: %d\n", w.Len())
 }
 
 func implode(sep string, arr []int) string {
@@ -4423,6 +4430,7 @@ func (f *Fpdf) putimage(info *ImageInfoType) {
 			trns.Printf("%d %d ", v, v)
 		}
 		f.outf("/Mask [%s]", trns.String())
+		fmt.Printf("putimage(): %d\n", trns.Len())
 	}
 	if info.smask != nil {
 		f.outf("/SMask %d 0 R", f.n+1)
