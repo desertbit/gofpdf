@@ -26,10 +26,13 @@ import (
  */
 
 // newTpl creates a template, copying graphics settings from a template if one is given
-func newTpl(corner PointType, size SizeType, orientationStr, unitStr, fontDirStr string, fn func(*Tpl), copyFrom *Fpdf) Template {
+func newTpl(corner PointType, size SizeType, orientationStr, unitStr, fontDirStr, bufferDir, outputFilePath string, fn func(*Tpl), copyFrom *Fpdf) (Template, error) {
 	sizeStr := ""
 
-	fpdf := fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, size)
+	fpdf, err := fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, bufferDir, outputFilePath, size)
+	if err != nil {
+		return nil, err
+	}
 	tpl := Tpl{*fpdf}
 	if copyFrom != nil {
 		tpl.loadParamsFromFpdf(copyFrom)
@@ -50,7 +53,7 @@ func newTpl(corner PointType, size SizeType, orientationStr, unitStr, fontDirStr
 	images := tpl.Fpdf.images
 
 	template := FpdfTpl{corner, size, bytes, images, templates, tpl.Fpdf.page}
-	return &template
+	return &template, nil
 }
 
 // FpdfTpl is a concrete implementation of the Template interface.

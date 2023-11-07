@@ -23,13 +23,13 @@ import (
 )
 
 // CreateTemplate defines a new template using the current page size.
-func (f *Fpdf) CreateTemplate(fn func(*Tpl)) Template {
-	return newTpl(PointType{0, 0}, f.curPageSize, f.defOrientation, f.unitStr, f.fontDirStr, fn, f)
+func (f *Fpdf) CreateTemplate(fn func(*Tpl)) (Template, error) {
+	return newTpl(PointType{0, 0}, f.curPageSize, f.defOrientation, f.unitStr, f.fontDirStr, f.bufferDir, f.outputFilePath, fn, f)
 }
 
 // CreateTemplateCustom starts a template, using the given bounds.
-func (f *Fpdf) CreateTemplateCustom(corner PointType, size SizeType, fn func(*Tpl)) Template {
-	return newTpl(corner, size, f.defOrientation, f.unitStr, f.fontDirStr, fn, f)
+func (f *Fpdf) CreateTemplateCustom(corner PointType, size SizeType, fn func(*Tpl)) (Template, error) {
+	return newTpl(corner, size, f.defOrientation, f.unitStr, f.fontDirStr, f.bufferDir, f.outputFilePath, fn, f)
 }
 
 // CreateTemplate creates a template that is not attached to any document.
@@ -39,18 +39,18 @@ func (f *Fpdf) CreateTemplateCustom(corner PointType, size SizeType, fn func(*Tp
 // landscape mode. This causes problems when placing the template in a master
 // document where this condition does not apply. CreateTpl() is a similar
 // function that lets you specify the orientation to avoid this problem.
-func CreateTemplate(corner PointType, size SizeType, unitStr, fontDirStr string, fn func(*Tpl)) Template {
+func CreateTemplate(corner PointType, size SizeType, unitStr, fontDirStr, bufferDir, outputFilePath string, fn func(*Tpl)) (Template, error) {
 	orientationStr := "p"
 	if size.Wd > size.Ht {
 		orientationStr = "l"
 	}
 
-	return CreateTpl(corner, size, orientationStr, unitStr, fontDirStr, fn)
+	return CreateTpl(corner, size, orientationStr, unitStr, fontDirStr, bufferDir, outputFilePath, fn)
 }
 
 // CreateTpl creates a template not attached to any document
-func CreateTpl(corner PointType, size SizeType, orientationStr, unitStr, fontDirStr string, fn func(*Tpl)) Template {
-	return newTpl(corner, size, orientationStr, unitStr, fontDirStr, fn, nil)
+func CreateTpl(corner PointType, size SizeType, orientationStr, unitStr, fontDirStr, bufferDir, outputFilePath string, fn func(*Tpl)) (Template, error) {
+	return newTpl(corner, size, orientationStr, unitStr, fontDirStr, bufferDir, outputFilePath, fn, nil)
 }
 
 // UseTemplate adds a template to the current page or another template,
@@ -266,7 +266,7 @@ chain:
 	return sorted
 }
 
-//  templateChainDependencies is a recursive function for determining the full chain of template dependencies
+// templateChainDependencies is a recursive function for determining the full chain of template dependencies
 func templateChainDependencies(template Template) []Template {
 	requires := template.Templates()
 	chain := make([]Template, len(requires)*2)

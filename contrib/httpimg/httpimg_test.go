@@ -7,7 +7,7 @@ import (
 )
 
 func ExampleRegister() {
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf, _ := gofpdf.New("L", "mm", "A4", "")
 	pdf.SetFont("Helvetica", "", 12)
 	pdf.SetFillColor(200, 200, 220)
 	pdf.AddPage()

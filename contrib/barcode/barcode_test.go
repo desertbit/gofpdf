@@ -11,7 +11,7 @@ import (
 )
 
 func createPdf() (pdf *gofpdf.Fpdf) {
-	pdf = gofpdf.New("L", "mm", "A4", "")
+	pdf, _ = gofpdf.New("L", "mm", "A4", "")
 	pdf.SetFont("Helvetica", "", 12)
 	pdf.SetFillColor(200, 200, 220)
 	pdf.AddPage()
@@ -202,7 +202,7 @@ func TestGetUnscaledBarcodeDimensions(t *testing.T) {
 
 // TestBarcodeNonIntegerScalingFactors shows that the barcode may be scaled to non-integer sizes
 func TestBarcodeNonIntegerScalingFactors(t *testing.T) {
-	pdf := gofpdf.New("L", "in", "A4", "")
+	pdf, _ := gofpdf.New("L", "in", "A4", "")
 	pdf.SetFont("Helvetica", "", 12)
 	pdf.SetFillColor(200, 200, 220)
 	pdf.AddPage()
