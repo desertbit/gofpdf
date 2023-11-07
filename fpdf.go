@@ -65,6 +65,8 @@ func fpdfNew(orientationStr, unitStr, sizeStr, fontDirStr, bufferDir, outputFile
 	if fontDirStr == "" {
 		fontDirStr = "."
 	}
+	f.bufferDir = bufferDir
+	f.outputFilePath = outputFilePath
 	f.page = 0
 	f.n = 2
 	if outputFilePath != "" {
