@@ -9,8 +9,9 @@ however that use of the default Importer is not thread safe.
 package gofpdi
 
 import (
-	realgofpdi "github.com/phpdave11/gofpdi"
 	"io"
+
+	realgofpdi "github.com/desertbit/gofpdi"
 )
 
 // gofpdiPdf is a partial interface that only implements the functions we need
@@ -33,6 +34,23 @@ func NewImporter() *Importer {
 	return &Importer{
 		fpdi: realgofpdi.NewImporter(),
 	}
+}
+
+// NewImporterFromStream is the same as NewImporter but also sets the pdf source with the given ReadSeeker.
+func NewImporterFromStream(rs *io.ReadSeeker) (i *Importer) {
+	i = NewImporter()
+	i.fpdi.SetSourceStream(rs)
+	return
+}
+
+// SetSourceFromFile sets the importer's source with the given path.
+func (i *Importer) SetSourceFromFile(path string) {
+	i.fpdi.SetSourceFile(path)
+}
+
+// NumPages gets the number of pages.
+func (i *Importer) NumPages() int {
+	return i.fpdi.GetReader().NumPages()
 }
 
 // ImportPage imports a page of a PDF file with the specified box (/MediaBox,
