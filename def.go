@@ -627,6 +627,7 @@ type Fpdf struct {
 
 	bufferDir      string // A directory to create temporary files in.
 	outputFilePath string // The filepath where the final document should be written to.
+	buffersClosed  bool   // True if the file buffers have been closed.
 }
 
 type encType struct {

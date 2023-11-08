@@ -672,6 +672,8 @@ func (f *Fpdf) open() {
 // automatically. If the document contains no page, AddPage() is called to
 // prevent the generation of an invalid document.
 func (f *Fpdf) Close() {
+	defer f.closeFileBuffers()
+
 	if f.err == nil {
 		if f.clipNest > 0 {
 			f.err = fmt.Errorf("clip procedure must be explicitly ended")
@@ -705,6 +707,22 @@ func (f *Fpdf) Close() {
 	// Close document
 	f.enddoc()
 	return
+}
+
+func (f *Fpdf) closeFileBuffers() {
+	if f.buffersClosed {
+		return
+	}
+
+	for _, info := range f.images {
+		info.data.Close()
+	}
+	for _, page := range f.pages {
+		page.Close()
+	}
+	f.buffer.Close()
+
+	f.buffersClosed = true
 }
 
 // PageSize returns the width and height of the specified page in the units

@@ -38,6 +38,7 @@ type buffer interface {
 	Len() int
 
 	Printf(fmtStr string, args ...interface{})
+	Close() error
 }
 
 type memBuffer struct {
@@ -55,6 +56,10 @@ func (m *memBuffer) Truncate(size int64) error {
 
 func (m *memBuffer) Printf(fmtStr string, args ...interface{}) {
 	m.Buffer.WriteString(fmt.Sprintf(fmtStr, args...))
+}
+
+func (m *memBuffer) Close() error {
+	return nil
 }
 
 type fileBuffer struct {
@@ -139,4 +144,8 @@ func (f *fileBuffer) WriteTo(w io.Writer) (n int64, err error) {
 	f.f.Seek(0, io.SeekEnd)
 
 	return io.Copy(w, f.f)
+}
+
+func (f *fileBuffer) Close() error {
+	return f.f.Close()
 }
